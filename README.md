@@ -2,18 +2,18 @@
 
 **Unified Reconnaissance & Exploitation Framework**
 
-A professional desktop GUI that chains three industry-standard penetration testing tools into a single, cohesive workflow — from initial discovery all the way through to SQL injection exploitation.
+A professional desktop GUI that chains four industry-standard penetration testing tools into a single, cohesive workflow — from initial discovery all the way through to SQL injection exploitation.
 
 ```
-Dork's Eye  →  Katana  →  SQLMap
-  Discover      Map        Exploit
+Dork's Eye  →  Katana  →  ParamSpider  →  SQLMap
+  Discover      Map       Extract Params   Exploit
 ```
 
 ---
 
 ## Overview
 
-Running a full recon-to-exploitation chain typically means juggling three terminal windows, copy-pasting URLs between tools, and remembering dozens of flags. SwordSuite replaces that with a single dark-themed desktop application where:
+Running a full recon-to-exploitation chain typically means juggling four terminal windows, copy-pasting URLs between tools, and remembering dozens of flags. SwordSuite replaces that with a single dark-themed desktop application where:
 
 - Results flow automatically from one tool to the next
 - Every flag is exposed through a well-labelled form — no docs required
@@ -36,14 +36,16 @@ The application uses a fixed left sidebar for navigation and a full-height conte
 │  TOOLS       │  │  for tool flags     │  │                       ││
 │  👁 Dork's Eye│  │                     │  │  Live terminal output ││
 │  ⚔ Katana   │  │  ▶ Run   ■ Stop     │  │                       ││
-│  💉 SQLMap   │  │                     │  │                       ││
-│              │  └─────────────────────┘  └───────────────────────┘│
+│  P ParamSpider│  │                     │  │                       ││
+│  💉 SQLMap   │  └─────────────────────┘  └───────────────────────┘│
+│              │                                                      │
 │  WORKFLOW    │                                                      │
 │  ⛓ Chain    │                                                      │
 │  💾 Sessions │                                                      │
 │──────────────│                                                      │
 │  ● dorks-eye │                                                      │
 │  ● katana    │                                                      │
+│  ● paramspider│                                                     │
 │  ● sqlmap    │                                                      │
 └──────────────┴─────────────────────────────────────────────────────┘
 ```
@@ -54,8 +56,8 @@ The application uses a fixed left sidebar for navigation and a full-height conte
 
 ### Dashboard
 
-- Live tool-installation status for all three external tools, with exact binary paths and install instructions when missing
-- Running totals across all saved sessions: dork results, endpoints found, SQL injections confirmed
+- Live tool-installation status for all four external tools, with exact binary paths and install instructions when missing
+- Running totals across all saved sessions: dork results, endpoints found, parameterised URLs, SQL injections confirmed
 - Quick-start buttons that navigate directly to a panel or start a new chain
 - Recent session list with per-session stats
 
@@ -102,6 +104,23 @@ The application uses a fixed left sidebar for navigation and a full-height conte
 - Live command preview updates as you adjust settings — you always see the exact `katana` command being built
 - One-click **Send to SQLMap**, or export the full endpoint list
 
+### ParamSpider Panel
+
+Mines parameterised URLs from web archives (Wayback Machine, Common Crawl, etc.) without actively crawling the target — a passive complement to Katana's active crawling.
+
+| Control | Flag | Description |
+|---------|------|-------------|
+| Domain | `-d` | Target domain to mine from web archives |
+| Exclude ext | `-e` | Comma-separated extensions to skip (default: images, fonts, CSS) |
+| Placeholder | `-p` | Replacement value for parameter values (default: `FUZZ`) |
+| Subdomains | `-s` | Include subdomains in the search |
+| Workers | `--workers` | Number of parallel workers |
+
+- Results table showing discovered URL, parameter name, and source domain
+- One-click **Send to SQLMap** — parameterised URLs are ready for injection testing
+- Filter and export results
+- Live command preview
+
 ### SQLMap Panel
 
 **Target options**
@@ -134,28 +153,28 @@ The application uses a fixed left sidebar for navigation and a full-height conte
 
 ### Recon Chain
 
-A visual three-step pipeline that runs all tools in sequence and pipes results between them automatically.
+A visual four-step pipeline that runs all tools in sequence and pipes results between them automatically.
 
 ```
-  ① Dork's Eye          ② Katana              ③ SQLMap
-  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐
-  │  Discover    │  →   │  Map         │  →   │  Exploit     │
-  │  65 dorks    │      │  endpoints   │      │  SQLi test   │
-  │              │      │              │      │              │
-  │  ○ IDLE      │      │  ○ IDLE      │      │  ○ IDLE      │
-  └──────────────┘      └──────────────┘      └──────────────┘
+  ① Dork's Eye      ② Katana         ③ ParamSpider     ④ SQLMap
+  ┌────────────┐    ┌────────────┐    ┌────────────┐    ┌────────────┐
+  │  Discover  │ →  │  Map       │ →  │  Extract   │ →  │  Exploit   │
+  │  65 dorks  │    │  endpoints │    │  params    │    │  SQLi test │
+  │  ○ IDLE    │    │  ○ IDLE    │    │  ○ IDLE    │    │  ○ IDLE    │
+  └────────────┘    └────────────┘    └────────────┘    └────────────┘
 ```
 
 Each card shows a live status indicator: `○ Idle` → `◉ Running` → `● Done` / `✕ Error`.
 
 - Toggle any step on/off independently
-- Per-step configuration (dork categories, crawl depth, SQLMap level/risk) without leaving the panel
-- Parameterised URLs discovered by Katana are passed directly to SQLMap — only URLs containing `?` are tested
+- Per-step configuration (dork categories, crawl depth, ParamSpider exclusions, SQLMap level/risk) without leaving the panel
+- ParamSpider mines web archives for parameterised URLs, complementing Katana's active crawling
+- Combined parameterised URLs are passed directly to SQLMap — only URLs containing `?` are tested
 - Full unified log stream in the terminal below
 
 ### Sessions
 
-- All scan data (dork results, endpoints, injections) serialised to `~/.swordsuite/sessions/` as JSON
+- All scan data (dork results, endpoints, parameterised URLs, injections) serialised to `~/.swordsuite/sessions/` as JSON
 - Browse sessions in a sortable table with per-session statistics
 - Double-click to load; export individual sessions to TXT or JSON; bulk delete
 - Session detail card shows counts at a glance before opening
@@ -180,6 +199,7 @@ The GUI wraps these tools via subprocess. Each tool is detected at startup — a
 | **dorks-eye** | `pip install dorks-eye` |
 | **katana** | `go install github.com/projectdiscovery/katana/cmd/katana@latest` |
 | | or `apt install katana` on Kali Linux |
+| **paramspider** | `pip install paramspider` |
 | **sqlmap** | `apt install sqlmap` |
 | | or `pip install sqlmap` |
 
@@ -212,9 +232,10 @@ python main.py
 | `Ctrl+1` | Dashboard |
 | `Ctrl+2` | Dork's Eye |
 | `Ctrl+3` | Katana |
-| `Ctrl+4` | SQLMap |
-| `Ctrl+5` | Recon Chain |
-| `Ctrl+6` | Sessions |
+| `Ctrl+4` | ParamSpider |
+| `Ctrl+5` | SQLMap |
+| `Ctrl+6` | Recon Chain |
+| `Ctrl+7` | Sessions |
 
 ---
 
@@ -241,6 +262,7 @@ Sword-of-Deep-Seated/
 │           ├── dashboard.py
 │           ├── dorks_panel.py
 │           ├── katana_panel.py
+│           ├── paramspider_panel.py
 │           ├── sqlmap_panel.py
 │           ├── chain_panel.py
 │           └── sessions_panel.py

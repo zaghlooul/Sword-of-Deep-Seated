@@ -19,6 +19,7 @@ from recon_suite.core.tool_runner       import detect_tools, TOOL_PATHS
 from recon_suite.ui.panels.dashboard    import DashboardPanel
 from recon_suite.ui.panels.dorks_panel  import DorksPanel
 from recon_suite.ui.panels.katana_panel import KatanaPanel
+from recon_suite.ui.panels.paramspider_panel import ParamSpiderPanel
 from recon_suite.ui.panels.sqlmap_panel import SqlmapPanel
 from recon_suite.ui.panels.chain_panel  import ChainPanel
 from recon_suite.ui.panels.sessions_panel import SessionsPanel
@@ -133,9 +134,10 @@ class MainWindow(QMainWindow):
                 ("🏠", "Dashboard",  "dashboard"),
             ]),
             ("TOOLS", [
-                ("👁", "Dork's Eye",  "dorks"),
-                ("⚔", "Katana",      "katana"),
-                ("💉", "SQLMap",      "sqlmap"),
+                ("👁", "Dork's Eye",    "dorks"),
+                ("⚔", "Katana",        "katana"),
+                ("P", "ParamSpider",   "paramspider"),
+                ("💉", "SQLMap",        "sqlmap"),
             ]),
             ("WORKFLOW", [
                 ("⛓", "Recon Chain", "chain"),
@@ -164,7 +166,7 @@ class MainWindow(QMainWindow):
         b_vl.setSpacing(4)
 
         detect_tools()
-        for tool, color in [("dorks-eye", P["blue"]), ("katana", P["cyan"]), ("sqlmap", P["purple"])]:
+        for tool, color in [("dorks-eye", P["blue"]), ("katana", P["cyan"]), ("paramspider", P["pink"]), ("sqlmap", P["purple"])]:
             dot_color = P["green"] if TOOL_PATHS.get(tool) else P["text_muted"]
             row = QHBoxLayout()
             dot = QLabel("●")
@@ -200,8 +202,14 @@ class MainWindow(QMainWindow):
 
         # Katana
         katana = KatanaPanel(navigate_cb=nav)
+        katana.send_to_paramspider.connect(self._paramspider_receive)
         katana.send_to_sqlmap.connect(self._sqlmap_receive)
         self._add_panel("katana", katana)
+
+        # ParamSpider
+        paramspider = ParamSpiderPanel(navigate_cb=nav)
+        paramspider.send_to_sqlmap.connect(self._sqlmap_receive)
+        self._add_panel("paramspider", paramspider)
 
         # SQLMap
         sqlmap = SqlmapPanel(navigate_cb=nav)
@@ -249,6 +257,10 @@ class MainWindow(QMainWindow):
         katana: KatanaPanel = self._panels["katana"]
         katana.set_targets(urls)
 
+    def _paramspider_receive(self, domains: list) -> None:
+        paramspider: ParamSpiderPanel = self._panels["paramspider"]
+        paramspider.set_domains(domains)
+
     def _sqlmap_receive(self, urls: list) -> None:
         sqlmap: SqlmapPanel = self._panels["sqlmap"]
         sqlmap.set_targets(urls)
@@ -256,12 +268,13 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     def _setup_shortcuts(self) -> None:
         keys = {
-            "dashboard": "Ctrl+1",
-            "dorks":     "Ctrl+2",
-            "katana":    "Ctrl+3",
-            "sqlmap":    "Ctrl+4",
-            "chain":     "Ctrl+5",
-            "sessions":  "Ctrl+6",
+            "dashboard":    "Ctrl+1",
+            "dorks":        "Ctrl+2",
+            "katana":       "Ctrl+3",
+            "paramspider":  "Ctrl+4",
+            "sqlmap":       "Ctrl+5",
+            "chain":        "Ctrl+6",
+            "sessions":     "Ctrl+7",
         }
         for key, shortcut in keys.items():
             sc = QShortcut(QKeySequence(shortcut), self)

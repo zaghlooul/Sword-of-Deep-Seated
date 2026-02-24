@@ -37,6 +37,7 @@ _TYPE_COLORS = {
 
 
 class KatanaPanel(QWidget):
+    send_to_paramspider = pyqtSignal(list)
     send_to_sqlmap = pyqtSignal(list)
 
     def __init__(
@@ -245,7 +246,7 @@ class KatanaPanel(QWidget):
         self._url_filter.textChanged.connect(self._apply_filter)
         bar_hl.addWidget(self._url_filter)
 
-        for text, cb in [("→ SQLMap", self._send_sqlmap), ("Export", self._export), ("Clear", self._clear_results)]:
+        for text, cb in [("→ ParamSpider", self._send_paramspider), ("→ SQLMap", self._send_sqlmap), ("Export", self._export), ("Clear", self._clear_results)]:
             btn = QPushButton(text)
             btn.setObjectName("BtnSmall")
             btn.clicked.connect(cb)
@@ -418,6 +419,18 @@ class KatanaPanel(QWidget):
         self._table.setRowCount(0)
         self._endpoints.clear()
         self._ep_count.setText("0 endpoints")
+
+    def _send_paramspider(self) -> None:
+        from urllib.parse import urlparse
+        urls = self._selected_urls()
+        if not urls:
+            urls = [ep["url"] for ep in self._endpoints if ep.get("url")]
+        # Extract unique domains from endpoints
+        domains = list({urlparse(u).netloc for u in urls if urlparse(u).netloc})
+        if domains:
+            self.send_to_paramspider.emit(domains)
+            self._navigate("paramspider")
+            self._terminal.success(f"Sent {len(domains)} domain(s) to ParamSpider.")
 
     def _send_sqlmap(self) -> None:
         urls = self._selected_urls()

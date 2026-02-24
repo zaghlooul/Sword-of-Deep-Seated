@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 
 from recon_suite.core.dork_engine  import DORK_DB, dork_for_target, search_ddg
 from recon_suite.core.session      import Session
-from recon_suite.core.tool_runner  import TOOL_PATHS, ProcessRunner, build_katana_cmd, build_sqlmap_cmd
+from recon_suite.core.tool_runner  import TOOL_PATHS, ProcessRunner, build_katana_cmd, build_paramspider_cmd, build_sqlmap_cmd
 from recon_suite.styles.theme      import P
 from recon_suite.ui.widgets.terminal     import TerminalWidget
 from recon_suite.ui.widgets.form_widgets import LabeledSlider, RunStopBar, SectionHeader
@@ -152,6 +152,7 @@ class ChainWorker(QObject):
         self._stop_flag = False
         self._dork_urls: List[str]     = []
         self._endpoints: List[str]     = []
+        self._param_urls: List[str]    = []
         self._injections: List[str]    = []
 
     def run(self) -> None:
@@ -160,6 +161,8 @@ class ChainWorker(QObject):
                 self._step_dorks()
             if not self._stop_flag and self._cfg.get("run_katana"):
                 self._step_katana()
+            if not self._stop_flag and self._cfg.get("run_paramspider"):
+                self._step_paramspider()
             if not self._stop_flag and self._cfg.get("run_sqlmap"):
                 self._step_sqlmap()
         except Exception as e:
@@ -251,14 +254,75 @@ class ChainWorker(QObject):
         self.log.emit(f"[+] Katana step complete — {len(self._endpoints)} endpoints.", P["green"])
         self.step_done.emit(1, len(self._endpoints))
 
+    # ---- ParamSpider ---------------------------------------------
+    def _step_paramspider(self) -> None:
+        from urllib.parse import urlparse
+        # Extract unique domains from endpoints, or fall back to target
+        domains: List[str] = []
+        for url in (self._endpoints or [self._target]):
+            try:
+                host = urlparse(url).netloc or url
+                if host not in domains:
+                    domains.append(host)
+            except Exception:
+                pass
+        if not domains:
+            domains = [self._target]
+
+        self.log.emit(f"[Chain] Step 3: ParamSpider — mining {len(domains)} domain(s)", P["pink"])
+
+        if not TOOL_PATHS.get("paramspider"):
+            self.log.emit("[!] paramspider not installed — skipping.", P["orange"])
+            self._param_urls = [u for u in self._endpoints if "?" in u]
+            self.step_done.emit(2, len(self._param_urls))
+            return
+
+        from PyQt6.QtCore import QEventLoop
+        collected: List[str] = []
+
+        for domain in domains[:20]:
+            if self._stop_flag:
+                break
+            self.log.emit(f"  Mining: {domain}", P["text_sec"])
+            loop = QEventLoop()
+
+            cmd, args = build_paramspider_cmd(
+                domain  = domain,
+                exclude = self._cfg.get("paramspider_exclude", "png,jpg,gif,jpeg,swf,woff,svg,pdf,css"),
+                subs    = self._cfg.get("paramspider_subs", False),
+            )
+
+            runner = ProcessRunner()
+
+            def on_line(line: str) -> None:
+                self.log.emit(f"  {line}", P["text_sec"])
+                line = line.strip()
+                if line.startswith("http"):
+                    url = line.split()[0]
+                    collected.append(url)
+
+            runner.stdout_line.connect(on_line)
+            runner.finished_sig.connect(lambda _: loop.quit())
+            runner.run(cmd, args)
+            loop.exec()
+
+        self._param_urls = list(set(collected))
+        # Also keep any parameterised URLs from Katana that ParamSpider didn't find
+        for url in self._endpoints:
+            if "?" in url and url not in self._param_urls:
+                self._param_urls.append(url)
+
+        self.log.emit(f"[+] ParamSpider step complete — {len(self._param_urls)} parameterised URLs.", P["green"])
+        self.step_done.emit(2, len(self._param_urls))
+
     # ---- SQLMap --------------------------------------------------
     def _step_sqlmap(self) -> None:
-        endpoints = self._endpoints or [self._target]
-        self.log.emit(f"[Chain] Step 3: SQLMap — testing {len(endpoints)} endpoint(s)", P["purple"])
+        endpoints = self._param_urls or self._endpoints or [self._target]
+        self.log.emit(f"[Chain] Step 4: SQLMap — testing {len(endpoints)} endpoint(s)", P["purple"])
 
         if not TOOL_PATHS.get("sqlmap"):
             self.log.emit("[!] sqlmap not installed — skipping.", P["orange"])
-            self.step_done.emit(2, 0)
+            self.step_done.emit(3, 0)
             return
 
         from PyQt6.QtCore import QEventLoop
@@ -268,7 +332,7 @@ class ChainWorker(QObject):
         targets = [u for u in endpoints if "?" in u][:self._cfg.get("sqlmap_max_targets", 20)]
         if not targets:
             self.log.emit("[!] No parameterised URLs found for SQLMap.", P["orange"])
-            self.step_done.emit(2, 0)
+            self.step_done.emit(3, 0)
             return
 
         for url in targets:
@@ -300,7 +364,7 @@ class ChainWorker(QObject):
 
         self._injections = list(set(injections))
         self.log.emit(f"[+] SQLMap step complete — {len(self._injections)} injection(s) found.", P["green"])
-        self.step_done.emit(2, len(self._injections))
+        self.step_done.emit(3, len(self._injections))
 
     def stop(self) -> None:
         self._stop_flag = True
@@ -349,7 +413,7 @@ class ChainPanel(QWidget):
         icon.setStyleSheet("font-size:20px;")
         title = QLabel("Recon Chain")
         title.setStyleSheet(f"color:{P['text']}; font-size:16px; font-weight:700;")
-        sub = QLabel("Automated Dork's Eye → Katana → SQLMap pipeline")
+        sub = QLabel("Automated Dork's Eye → Katana → ParamSpider → SQLMap pipeline")
         sub.setStyleSheet(f"color:{P['text_sec']}; font-size:12px;")
         hl.addWidget(icon)
         hl.addWidget(title)
@@ -381,13 +445,15 @@ class ChainPanel(QWidget):
 
         # Step toggles
         vl.addWidget(SectionHeader("Pipeline Steps", P["green"]))
-        self._do_dorks  = QCheckBox("Step 1: Dork's Eye")
-        self._do_katana = QCheckBox("Step 2: Katana Crawler")
-        self._do_sqlmap = QCheckBox("Step 3: SQLMap")
+        self._do_dorks       = QCheckBox("Step 1: Dork's Eye")
+        self._do_katana      = QCheckBox("Step 2: Katana Crawler")
+        self._do_paramspider = QCheckBox("Step 3: ParamSpider")
+        self._do_sqlmap      = QCheckBox("Step 4: SQLMap")
         self._do_dorks.setChecked(True)
         self._do_katana.setChecked(True)
+        self._do_paramspider.setChecked(True)
         self._do_sqlmap.setChecked(True)
-        for cb in (self._do_dorks, self._do_katana, self._do_sqlmap):
+        for cb in (self._do_dorks, self._do_katana, self._do_paramspider, self._do_sqlmap):
             cb.setStyleSheet(f"font-weight:600; color:{P['text']};")
             vl.addWidget(cb)
 
@@ -427,6 +493,17 @@ class ChainPanel(QWidget):
         self._k_forms.setChecked(True)
         vl.addWidget(self._k_js)
         vl.addWidget(self._k_forms)
+
+        # ParamSpider settings
+        vl.addWidget(SectionHeader("ParamSpider Settings", P["pink"]))
+        self._ps_exclude = QLineEdit()
+        self._ps_exclude.setText("png,jpg,gif,jpeg,swf,woff,svg,pdf,css")
+        self._ps_exclude.setPlaceholderText("Extensions to exclude")
+        vl.addWidget(QLabel("Exclude ext:", styleSheet=f"color:{P['text_sec']}; font-size:12px;"))
+        vl.addWidget(self._ps_exclude)
+
+        self._ps_subs = QCheckBox("Include subdomains  (-s)")
+        vl.addWidget(self._ps_subs)
 
         # SQLMap settings
         vl.addWidget(SectionHeader("SQLMap Settings", P["purple"]))
@@ -473,19 +550,24 @@ class ChainPanel(QWidget):
         pipe_hl.setContentsMargins(24, 16, 24, 16)
         pipe_hl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
-        self._card_dorks  = StepCard(1, "Dork's Eye",
-                                     "Discover URLs via Google dork queries",
-                                     P["blue"])
-        self._card_katana = StepCard(2, "Katana",
-                                     "Crawl URLs, extract endpoints & forms",
-                                     P["cyan"])
-        self._card_sqlmap = StepCard(3, "SQLMap",
-                                     "Test parameterised endpoints for SQLi",
-                                     P["purple"])
+        self._card_dorks       = StepCard(1, "Dork's Eye",
+                                          "Discover URLs via Google dork queries",
+                                          P["blue"])
+        self._card_katana      = StepCard(2, "Katana",
+                                          "Crawl URLs, extract endpoints & forms",
+                                          P["cyan"])
+        self._card_paramspider = StepCard(3, "ParamSpider",
+                                          "Mine parameterised URLs from web archives",
+                                          P["pink"])
+        self._card_sqlmap      = StepCard(4, "SQLMap",
+                                          "Test parameterised endpoints for SQLi",
+                                          P["purple"])
 
         pipe_hl.addWidget(self._card_dorks)
         pipe_hl.addWidget(_Arrow())
         pipe_hl.addWidget(self._card_katana)
+        pipe_hl.addWidget(_Arrow())
+        pipe_hl.addWidget(self._card_paramspider)
         pipe_hl.addWidget(_Arrow())
         pipe_hl.addWidget(self._card_sqlmap)
         pipe_hl.addStretch()
@@ -515,9 +597,10 @@ class ChainPanel(QWidget):
         dork_cats = [cat for cat, cb in self._dork_cat_checks.items() if cb.isChecked()]
 
         config = {
-            "run_dorks":  self._do_dorks.isChecked(),
-            "run_katana": self._do_katana.isChecked(),
-            "run_sqlmap": self._do_sqlmap.isChecked(),
+            "run_dorks":         self._do_dorks.isChecked(),
+            "run_katana":        self._do_katana.isChecked(),
+            "run_paramspider":   self._do_paramspider.isChecked(),
+            "run_sqlmap":        self._do_sqlmap.isChecked(),
             "dork_categories":   dork_cats,
             "dork_custom":       self._dork_custom.toPlainText(),
             "dork_max_per_query":int(self._dork_max.currentText()),
@@ -525,13 +608,15 @@ class ChainPanel(QWidget):
             "katana_concurrency":self._k_concur.value,
             "katana_js":         self._k_js.isChecked(),
             "katana_forms":      self._k_forms.isChecked(),
+            "paramspider_exclude":self._ps_exclude.text().strip(),
+            "paramspider_subs":  self._ps_subs.isChecked(),
             "sqlmap_level":      self._sq_level.value,
             "sqlmap_risk":       self._sq_risk.value,
             "sqlmap_dbs":        self._sq_dbs.isChecked(),
             "sqlmap_max_targets":int(self._sq_max_targets.currentText()),
         }
 
-        for card in (self._card_dorks, self._card_katana, self._card_sqlmap):
+        for card in (self._card_dorks, self._card_katana, self._card_paramspider, self._card_sqlmap):
             card.set_state(StepState.IDLE)
 
         self._terminal.clear()
@@ -560,14 +645,14 @@ class ChainPanel(QWidget):
         self._run_bar.set_running(False)
 
     def _on_step_done(self, step: int, count: int) -> None:
-        cards = [self._card_dorks, self._card_katana, self._card_sqlmap]
+        cards = [self._card_dorks, self._card_katana, self._card_paramspider, self._card_sqlmap]
         cards[step].set_state(StepState.DONE, count)
         # Advance next step indicator
         if step + 1 < len(cards):
             cards[step + 1].set_state(StepState.RUNNING)
 
     def _on_step_error(self, step: int, msg: str) -> None:
-        cards = [self._card_dorks, self._card_katana, self._card_sqlmap]
+        cards = [self._card_dorks, self._card_katana, self._card_paramspider, self._card_sqlmap]
         cards[step].set_state(StepState.ERROR)
         self._terminal.error(msg)
 

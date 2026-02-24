@@ -144,7 +144,7 @@ class DashboardPanel(QWidget):
         title.setStyleSheet(f"color:{P['text']}; font-size:26px; font-weight:800; letter-spacing:-0.5px;")
         subtitle = QLabel(
             "Unified reconnaissance & exploitation framework  —  "
-            "Dork's Eye  ·  Katana  ·  SQLMap"
+            "Dork's Eye  ·  Katana  ·  ParamSpider  ·  SQLMap"
         )
         subtitle.setStyleSheet(f"color:{P['text_sec']}; font-size:13px;")
         hdr_l.addWidget(title)
@@ -155,15 +155,17 @@ class DashboardPanel(QWidget):
         stats_grid = QGridLayout()
         stats_grid.setSpacing(14)
 
-        self._stat_sessions  = _StatTile("0", "SESSIONS",        P["cyan"])
-        self._stat_dorks     = _StatTile("0", "DORK RESULTS",    P["blue"])
-        self._stat_endpoints = _StatTile("0", "ENDPOINTS",       P["green"])
-        self._stat_injections= _StatTile("0", "SQL INJECTIONS",  P["purple"])
+        self._stat_sessions   = _StatTile("0", "SESSIONS",        P["cyan"])
+        self._stat_dorks      = _StatTile("0", "DORK RESULTS",    P["blue"])
+        self._stat_endpoints  = _StatTile("0", "ENDPOINTS",       P["green"])
+        self._stat_params     = _StatTile("0", "PARAM URLS",      P["pink"])
+        self._stat_injections = _StatTile("0", "SQL INJECTIONS",  P["purple"])
 
         stats_grid.addWidget(self._stat_sessions,   0, 0)
         stats_grid.addWidget(self._stat_dorks,      0, 1)
         stats_grid.addWidget(self._stat_endpoints,  0, 2)
-        stats_grid.addWidget(self._stat_injections, 0, 3)
+        stats_grid.addWidget(self._stat_params,     0, 3)
+        stats_grid.addWidget(self._stat_injections, 0, 4)
         vl.addLayout(stats_grid)
 
         # --- Quick actions -----------------------------------------
@@ -189,15 +191,21 @@ class DashboardPanel(QWidget):
                                P["cyan"])
         btn_katana.clicked.connect(lambda: self._navigate("katana"))
 
+        btn_paramspider = _QuickBtn("P", "ParamSpider",
+                                    "Extract parameterised URLs from web archives",
+                                    P["pink"])
+        btn_paramspider.clicked.connect(lambda: self._navigate("paramspider"))
+
         btn_sqlmap = _QuickBtn("💉", "SQLMap",
                                "Automated SQL injection detection and exploitation",
                                P["purple"])
         btn_sqlmap.clicked.connect(lambda: self._navigate("sqlmap"))
 
-        qa_grid.addWidget(btn_chain,  0, 0)
-        qa_grid.addWidget(btn_dorks,  0, 1)
-        qa_grid.addWidget(btn_katana, 1, 0)
-        qa_grid.addWidget(btn_sqlmap, 1, 1)
+        qa_grid.addWidget(btn_chain,       0, 0)
+        qa_grid.addWidget(btn_dorks,       0, 1)
+        qa_grid.addWidget(btn_katana,      1, 0)
+        qa_grid.addWidget(btn_paramspider, 1, 1)
+        qa_grid.addWidget(btn_sqlmap,      2, 0)
         vl.addLayout(qa_grid)
 
         # --- Tool status -------------------------------------------
@@ -209,19 +217,22 @@ class DashboardPanel(QWidget):
         ts_grid.setSpacing(12)
 
         tools_info = [
-            ("dorks-eye",  P["blue"],
+            ("dorks-eye",    P["blue"],
              "Google dork automation — discovers exposed assets via search engine queries.",
              "pip install dorks-eye  OR  git clone https://github.com/BullsEye0/dorks-eye"),
-            ("katana",     P["cyan"],
+            ("katana",       P["cyan"],
              "ProjectDiscovery's blazing-fast web crawler and spider with JS rendering.",
              "go install github.com/projectdiscovery/katana/cmd/katana@latest"),
-            ("sqlmap",     P["purple"],
+            ("paramspider",  P["pink"],
+             "Extracts parameterised URLs from web archives for targeted parameter testing.",
+             "pip install paramspider"),
+            ("sqlmap",       P["purple"],
              "The open-source SQL injection and database take-over tool.",
              "apt install sqlmap  OR  pip install sqlmap"),
         ]
         for col, (name, color, desc, hint) in enumerate(tools_info):
             card = ToolStatusCard(name, TOOL_PATHS.get(name), desc, hint, color)
-            ts_grid.addWidget(card, 0, col)
+            ts_grid.addWidget(card, 0 if col < 2 else 1, col % 2)
 
         vl.addLayout(ts_grid)
 
@@ -249,6 +260,7 @@ class DashboardPanel(QWidget):
         sessions = list_sessions()
         total_dorks = 0
         total_endpoints = 0
+        total_params = 0
         total_injections = 0
 
         # Clear old session rows
@@ -262,6 +274,7 @@ class DashboardPanel(QWidget):
                 s = Session.load(path)
                 total_dorks     += len(s.dork_results)
                 total_endpoints += len(s.katana_results)
+                total_params    += len(s.paramspider_results)
                 total_injections+= len(s.sqlmap_results)
                 if i < 5:
                     row = self._session_row(s)
@@ -277,6 +290,7 @@ class DashboardPanel(QWidget):
         self._stat_sessions.update_value(str(len(sessions)))
         self._stat_dorks.update_value(str(total_dorks))
         self._stat_endpoints.update_value(str(total_endpoints))
+        self._stat_params.update_value(str(total_params))
         self._stat_injections.update_value(str(total_injections))
 
     def _session_row(self, session: Session) -> QWidget:
@@ -306,9 +320,10 @@ class DashboardPanel(QWidget):
 
         # Stats
         for count, label, color in [
-            (len(session.dork_results),   "dorks",     P["blue"]),
-            (len(session.katana_results), "endpoints", P["cyan"]),
-            (len(session.sqlmap_results), "injections",P["purple"]),
+            (len(session.dork_results),       "dorks",     P["blue"]),
+            (len(session.katana_results),     "endpoints", P["cyan"]),
+            (len(session.paramspider_results),"params",    P["pink"]),
+            (len(session.sqlmap_results),     "injections",P["purple"]),
         ]:
             stat_w = QWidget()
             stat_l = QVBoxLayout(stat_w)

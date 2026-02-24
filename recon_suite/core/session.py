@@ -34,6 +34,13 @@ class KatanaResult:
 
 
 @dataclass
+class ParamspiderResult:
+    url:       str
+    param:     str  = ""
+    source:    str  = ""          # archive source (web.archive.org, etc.)
+
+
+@dataclass
 class SqlmapResult:
     url:       str
     param:     str  = ""
@@ -50,9 +57,10 @@ class Session:
     target:       str        = ""
     created_at:   float      = field(default_factory=time.time)
     updated_at:   float      = field(default_factory=time.time)
-    dork_results:   List[DorkResult]   = field(default_factory=list)
-    katana_results: List[KatanaResult] = field(default_factory=list)
-    sqlmap_results: List[SqlmapResult] = field(default_factory=list)
+    dork_results:       List[DorkResult]       = field(default_factory=list)
+    katana_results:     List[KatanaResult]     = field(default_factory=list)
+    paramspider_results:List[ParamspiderResult]= field(default_factory=list)
+    sqlmap_results:     List[SqlmapResult]     = field(default_factory=list)
     notes:        str        = ""
     tags:         List[str]  = field(default_factory=list)
     chain_config: Dict[str, Any] = field(default_factory=dict)
@@ -77,9 +85,10 @@ class Session:
         s.notes        = data.get("notes", "")
         s.tags         = data.get("tags", [])
         s.chain_config = data.get("chain_config", {})
-        s.dork_results   = [DorkResult(**r)   for r in data.get("dork_results", [])]
-        s.katana_results = [KatanaResult(**r) for r in data.get("katana_results", [])]
-        s.sqlmap_results = [SqlmapResult(**r) for r in data.get("sqlmap_results", [])]
+        s.dork_results       = [DorkResult(**r)       for r in data.get("dork_results", [])]
+        s.katana_results     = [KatanaResult(**r)     for r in data.get("katana_results", [])]
+        s.paramspider_results= [ParamspiderResult(**r)for r in data.get("paramspider_results", [])]
+        s.sqlmap_results     = [SqlmapResult(**r)     for r in data.get("sqlmap_results", [])]
         return s
 
     def export_txt(self, path: Path) -> None:
@@ -98,6 +107,11 @@ class Session:
             lines += ["=== Katana Endpoints ==="]
             for r in self.katana_results:
                 lines += [f"  [{r.kind.upper()}] {r.method} {r.url}", ""]
+
+        if self.paramspider_results:
+            lines += ["=== ParamSpider URLs ==="]
+            for r in self.paramspider_results:
+                lines += [f"  {r.url}  (param={r.param})", ""]
 
         if self.sqlmap_results:
             lines += ["=== SQLMap Findings ==="]
@@ -118,7 +132,8 @@ class Session:
     # ----------------------------------------------------------------
     @property
     def total_findings(self) -> int:
-        return len(self.dork_results) + len(self.katana_results) + len(self.sqlmap_results)
+        return (len(self.dork_results) + len(self.katana_results)
+                + len(self.paramspider_results) + len(self.sqlmap_results))
 
 
 # ---------------------------------------------------------------------------
