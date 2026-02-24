@@ -19,9 +19,10 @@ def detect_tools() -> dict[str, Optional[str]]:
     """Return dict of tool_name -> full path (or None if not found)."""
     global TOOL_PATHS
     candidates = {
-        "dorks-eye": ["dorks-eye", "dorkseye"],
-        "katana":    ["katana"],
-        "sqlmap":    ["sqlmap", "sqlmap.py"],
+        "dorks-eye":   ["dorks-eye", "dorkseye"],
+        "katana":      ["katana"],
+        "paramspider": ["paramspider"],
+        "sqlmap":      ["sqlmap", "sqlmap.py"],
     }
     for name, tries in candidates.items():
         found = None
@@ -184,6 +185,31 @@ def build_katana_cmd(
             args += ["-H", f"{k}: {v}"]
 
     args += ["-silent", "-nc"]
+    return cmd, args
+
+
+def build_paramspider_cmd(
+    domain: str,
+    exclude: str       = "png,jpg,gif,jpeg,swf,woff,svg,pdf,css",
+    placeholder: str   = "FUZZ",
+    subs: bool         = False,
+    workers: int       = 0,
+    output_file: str   = "",
+) -> tuple[str, List[str]]:
+    cmd = TOOL_PATHS.get("paramspider") or "paramspider"
+    args: List[str] = ["-d", domain]
+
+    if exclude:
+        args += ["-e", exclude]
+    if placeholder and placeholder != "FUZZ":
+        args += ["-p", placeholder]
+    if subs:
+        args.append("-s")
+    if workers > 0:
+        args += ["--workers", str(workers)]
+    if output_file:
+        args += ["-o", output_file]
+
     return cmd, args
 
 

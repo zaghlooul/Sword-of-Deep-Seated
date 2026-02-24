@@ -12,7 +12,7 @@ RESET='\033[0m'
 banner() {
     echo -e "\n${CYAN}${BOLD}"
     echo "  ⚔  SwordSuite — Unified Recon & Exploitation Framework"
-    echo "     Dork's Eye · Katana · SQLMap in one professional GUI"
+    echo "     Dork's Eye · Katana · ParamSpider · SQLMap in one professional GUI"
     echo -e "${RESET}"
 }
 
@@ -33,6 +33,7 @@ pip3 install -r requirements.txt
 echo -e "\n${BOLD}[2/3] Checking tool availability…${RESET}"
 check_tool "dorks-eye"
 check_tool "katana"
+check_tool "paramspider"
 check_tool "sqlmap"
 
 echo -e "\n${BOLD}[3/3] Optional — install missing tools:${RESET}"
@@ -44,6 +45,9 @@ echo ""
 echo "  Katana (requires Go ≥ 1.21):"
 echo "    go install github.com/projectdiscovery/katana/cmd/katana@latest"
 echo "    # OR: apt install katana  (Kali Linux)"
+echo ""
+echo "  ParamSpider:"
+echo "    pip install paramspider"
 echo ""
 echo "  SQLMap:"
 echo "    pip install sqlmap"
