@@ -153,6 +153,13 @@ def build_katana_cmd(
     extra_headers: Optional[dict] = None,
     cookies: str       = "",
     passive: bool      = False,
+    timeout: int        = 0,
+    exclude_ext: str    = "",
+    match_regex: str    = "",
+    scope_domains: Optional[List[str]] = None,
+    out_scope_domains: Optional[List[str]] = None,
+    json_output: bool   = True,
+    proxy: str          = "",
 ) -> tuple[str, List[str]]:
     cmd = TOOL_PATHS.get("katana") or "katana"
     args: List[str] = []
@@ -165,6 +172,8 @@ def build_katana_cmd(
     args += ["-c", str(concurrency)]
     args += ["-rl", str(rate_limit)]
 
+    if timeout > 0:
+        args += ["-timeout", str(timeout)]
     if js_crawl:
         args.append("-jc")
     if headless:
@@ -182,6 +191,20 @@ def build_katana_cmd(
     if extra_headers:
         for k, v in extra_headers.items():
             args += ["-H", f"{k}: {v}"]
+    if exclude_ext:
+        args += ["-extension-filter", exclude_ext]
+    if match_regex:
+        args += ["-match-regex", match_regex]
+    if scope_domains:
+        for d in scope_domains:
+            args += ["-cs", d]
+    if out_scope_domains:
+        for d in out_scope_domains:
+            args += ["-cos", d]
+    if proxy:
+        args += ["-proxy", proxy]
+    if json_output:
+        args += ["-jsonl"]
 
     args += ["-silent", "-nc"]
     return cmd, args
